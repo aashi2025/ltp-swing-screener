@@ -53,7 +53,7 @@
         .id-atm { background-color: rgba(59, 130, 246, 0.35); color: #60A5FA; font-weight: 800; border: 1px solid rgba(59, 130, 246, 0.6); }
     </style>
 </head>
-<body class="font-sans antialiased min-h-screen flex flex-col justify-between">
+<body class="font-sans antialiased min-h-screen flex flex-col justify-between" onload="initApp()">
 
     <!-- Top Header -->
     <header class="border-b border-slate-800 bg-slate-900/90 backdrop-blur-md sticky top-0 z-30">
@@ -232,17 +232,17 @@
             </div>
             
             <p class="text-xs text-slate-400">
-                (Optional) Enter your Upstox / Dhan / Zerodha bearer token for direct market access.
+                Enter your Upstox / Dhan / Zerodha API token below. Token is stored securely in your browser.
             </p>
 
             <div class="space-y-3">
                 <div>
                     <label class="text-xs font-semibold text-slate-300 block mb-1">Broker API Provider</label>
                     <select id="tokenProvider" class="w-full bg-slate-950 border border-slate-800 text-xs text-slate-200 rounded-lg p-2.5 focus:border-blue-500 outline-none">
-                        <option value="DEFAULT_HYBRID">Default Hybrid (Yahoo Live Spot + NSE Session)</option>
                         <option value="UPSTOX">Upstox API Token</option>
                         <option value="DHAN">Dhan API Token</option>
                         <option value="ZERODHA">Zerodha Kite Access Token</option>
+                        <option value="DEFAULT_HYBRID">Default Hybrid (Yahoo Live Spot + NSE Session)</option>
                     </select>
                 </div>
 
@@ -336,6 +336,21 @@
         let allStockData = [];
         let activeTab = 'ALL';
 
+        function initApp() {
+            updateTokenHeader();
+        }
+
+        function updateTokenHeader() {
+            const token = localStorage.getItem('upstox_token') || '';
+            const provider = localStorage.getItem('upstox_provider') || 'UPSTOX';
+            const btnText = document.getElementById('headerTokenStatus');
+            if (token) {
+                btnText.innerHTML = `<span class="text-emerald-400">🔑 Token: ${provider} (Saved)</span>`;
+            } else {
+                btnText.innerHTML = `🔑 API Token Config`;
+            }
+        }
+
         async function runScan() {
             const btn = document.getElementById('scanBtn');
             const icon = document.getElementById('scanIcon');
@@ -360,7 +375,8 @@
             `;
 
             try {
-                const response = await fetch('/api/scan');
+                const token = localStorage.getItem('upstox_token') || '';
+                const response = await fetch(`/api/scan?token=${encodeURIComponent(token)}`);
                 const result = await response.json();
 
                 if (result.status === 'success') {
@@ -548,7 +564,8 @@
             modal.classList.remove('hidden');
 
             try {
-                const response = await fetch(`/api/option-chain/${symbol}`);
+                const token = localStorage.getItem('upstox_token') || '';
+                const response = await fetch(`/api/option-chain/${symbol}?token=${encodeURIComponent(token)}`);
                 const resData = await response.json();
 
                 if (resData.status === 'success') {
@@ -619,6 +636,10 @@
         }
 
         function openTokenModal() {
+            const token = localStorage.getItem('upstox_token') || '';
+            const provider = localStorage.getItem('upstox_provider') || 'UPSTOX';
+            document.getElementById('tokenProvider').value = provider;
+            document.getElementById('tokenInput').value = token;
             document.getElementById('tokenModal').classList.remove('hidden');
         }
 
@@ -626,25 +647,16 @@
             document.getElementById('tokenModal').classList.add('hidden');
         }
 
-        async function saveTokenConfig() {
+        function saveTokenConfig() {
             const provider = document.getElementById('tokenProvider').value;
-            const token = document.getElementById('tokenInput').value;
+            const token = document.getElementById('tokenInput').value.trim();
 
-            try {
-                const res = await fetch('/api/config/token', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ provider, token })
-                });
-                const data = await res.json();
-                if (data.status === 'success') {
-                    alert('API Token Config saved successfully!');
-                    closeTokenModal();
-                    document.getElementById('headerTokenStatus').innerText = data.has_token ? `🔑 Token: ${data.provider}` : '🔑 API Token Config';
-                }
-            } catch (e) {
-                alert('Failed to save API token config.');
-            }
+            localStorage.setItem('upstox_provider', provider);
+            localStorage.setItem('upstox_token', token);
+
+            alert('Token Config saved successfully in your browser!');
+            closeTokenModal();
+            updateTokenHeader();
         }
 
         function exportToCSV() {
