@@ -5,13 +5,7 @@ from flask import Flask, jsonify, request, send_from_directory
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-try:
-    from _screener_engine import run_swing_screener, parse_option_chain_data, fetch_nse_option_chain_live, generate_synthetic_option_chain, fetch_live_spot_price, set_broker_token, process_single_stock, BROKER_CONFIG, FO_UNIVERSE
-except ImportError:
-    try:
-        from screener_engine import run_swing_screener, parse_option_chain_data, fetch_nse_option_chain_live, generate_synthetic_option_chain, fetch_live_spot_price, set_broker_token, process_single_stock, BROKER_CONFIG, FO_UNIVERSE
-    except ImportError:
-        from api._screener_engine import run_swing_screener, parse_option_chain_data, fetch_nse_option_chain_live, generate_synthetic_option_chain, fetch_live_spot_price, set_broker_token, process_single_stock, BROKER_CONFIG, FO_UNIVERSE
+from _screener_engine import run_swing_screener, parse_option_chain_data, fetch_nse_option_chain_live, generate_synthetic_option_chain, fetch_live_spot_price, process_single_stock, FO_UNIVERSE
 
 app = Flask(__name__, static_folder='../public', static_url_path='')
 
@@ -28,27 +22,7 @@ def health():
     return jsonify({
         "status": "online",
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "total_universe_stocks": len(FO_UNIVERSE),
-        "broker_provider": BROKER_CONFIG["api_provider"],
-        "token_configured": bool(BROKER_CONFIG["api_token"])
-    })
-
-@app.route('/api/config/token', methods=['GET', 'POST'])
-def handle_token_config():
-    if request.method == 'POST':
-        data = request.get_json() or {}
-        provider = data.get('provider', 'DEFAULT_HYBRID')
-        token = data.get('token', '')
-        set_broker_token(provider, token)
-        return jsonify({
-            "status": "success",
-            "message": f"Broker Token updated successfully for provider: {provider}",
-            "provider": provider,
-            "has_token": bool(token)
-        })
-    return jsonify({
-        "provider": BROKER_CONFIG["api_provider"],
-        "has_token": bool(BROKER_CONFIG["api_token"])
+        "total_universe_stocks": len(FO_UNIVERSE)
     })
 
 @app.route('/api/scan', methods=['GET', 'POST'])
@@ -56,13 +30,14 @@ def scan_swing_setups():
     try:
         signal_filter = request.args.get('filter', 'all').upper()
         custom_sym = request.args.get('symbol', '').strip().upper()
+        token = request.args.get('token', '').strip()
         
         if custom_sym and custom_sym not in FO_UNIVERSE:
             target_list = [custom_sym] + FO_UNIVERSE
         else:
             target_list = FO_UNIVERSE
 
-        results = run_swing_screener(target_list)
+        results = run_swing_screener(target_list, token=token)
         
         if signal_filter == 'BULLISH':
             filtered = [r for r in results if r['signal_type'] == 'BULLISH']
@@ -80,7 +55,7 @@ def scan_swing_setups():
             "filtered_count": len(filtered),
             "bullish_count": len([r for r in results if r['signal_type'] == 'BULLISH']),
             "bearish_count": len([r for r in results if r['signal_type'] == 'BEARISH']),
-            "broker_provider": BROKER_CONFIG["api_provider"],
+            "has_token": bool(token),
             "stocks": filtered
         })
     except Exception as e:
@@ -93,7 +68,8 @@ def scan_swing_setups():
 def get_option_chain_snapshot(symbol):
     try:
         sym_clean = symbol.upper().strip()
-        parsed = process_single_stock(sym_clean)
+        token = request.args.get('token', '').strip()
+        parsed = process_single_stock(sym_clean, token=token)
         return jsonify({
             "status": "success",
             "symbol": sym_clean,
